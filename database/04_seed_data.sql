@@ -1,5 +1,5 @@
 -- Date initiale si cele cinci tranzactii demonstrative din popularea originala.
--- Se ruleaza DUPA 04 si 05, INAINTE de 03: soldurile initiale sunt actualizate manual aici.
+-- Se ruleaza DUPA 02 si 03, INAINTE de 05: soldurile initiale sunt actualizate manual aici.
 
 SET DEFINE OFF
 SET SQLBLANKLINES ON

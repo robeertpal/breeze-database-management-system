@@ -1,4 +1,4 @@
--- Functii stocate independente. Functiile membre ale pachetelor se afla in 04.
+-- Functii stocate independente. Functiile membre ale pachetelor se afla in 02_procedures.sql.
 
 SET DEFINE OFF
 SET SQLBLANKLINES ON

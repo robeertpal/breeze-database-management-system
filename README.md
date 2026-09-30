@@ -1,36 +1,64 @@
 # BREEZE Database Management System
 
-Bază de date pentru administrarea unui festival de muzică: personal și departamente, artiști și sponsori, programul scenelor, participanți și bilete, brățări electronice, puncte de vânzare, plăți și stocuri.
+BREEZE is an Oracle-based relational database system designed to model and automate the operations of a large-scale music festival.
 
-Proiect realizat de **Pal Robert-Attila**, seria 23, grupa 232, anul universitar 2025–2026. Implementare în **Oracle Database 19c**, cu SQL și PL/SQL, într-un container Docker.
+The system manages personnel, artists, sponsors, event scheduling, participants, ticketing, electronic wristbands, inventory, payments and auditing. Business rules are enforced at database level using PL/SQL procedures, functions, packages and triggers.
 
-## Documentație și diagrame
+## Tech Stack
 
-[Documentația completă — PDF, 221 de pagini](docs/BREEZE_Documentation.pdf) păstrează modelul relațional, regulile de integritate, explicațiile implementării și scenariile demonstrative. Fișierul este copia integrală a documentului `232_Pal_Robert-Attila_BREEZE 2.pdf`.
+- Oracle Database 19c
+- SQL
+- PL/SQL
+- Docker
+- SQL*Plus
 
-### Diagrama entitate-relație
+## Key Features
 
-Export din pagina 24 a documentației. Deschide imaginea pentru detalii.
+- Relational data model with primary, foreign key, uniqueness and check constraints
+- Event scheduling with stage-overlap prevention
+- Ticket validation and non-transferability enforcement
+- Electronic wristband payments and balance management
+- Product inventory and transaction processing
+- Audit logging using autonomous transactions
+- Controlled DDL operations through maintenance sessions
+- Transactional workflows using row locking and savepoints
 
-[![Diagrama ER BREEZE](docs/er-diagram.png)](docs/er-diagram.png)
+## Database Architecture
 
-### Schema conceptuală
+The schema connects festival operations across staffing, scheduling, admission and sales. Wristbands link ticket holders to payments; transactions connect purchases to products, stock and sponsor-operated sales points.
 
-Export din pagina 25 a documentației.
+### Entity-Relationship Diagram
 
-[![Schema conceptuală BREEZE](docs/conceptual-schema.png)](docs/conceptual-schema.png)
+![BREEZE Entity-Relationship Diagram](docs/er-diagram.png)
 
-## Organizarea proiectului
+### Conceptual Schema
+
+![BREEZE Conceptual Schema](docs/conceptual-schema.png)
+
+## Notable Database Logic
+
+| Capability | Implementation |
+| --- | --- |
+| Event scheduling | `t_program_fara_suprapunere` rejects overlapping stage events on INSERT; `t_program_artist` limits each artist to one performance. |
+| Ticket validation | `t_bilet_validat_insert` and `t_bilet_validare_update` require an agent to validate a ticket and prevent reverting a validated ticket to its unvalidated state. |
+| Persistent audit logging | `p_suspiciune` uses an autonomous transaction to record suspicious attempts even when the triggering operation is rejected. |
+| Non-transferable tickets | `t_blocare_update_bilet` blocks ticket reassignment; `t_blocare_update_participant` protects participant identification fields. |
+| DDL control | `t_control` gates CREATE/ALTER/DROP through `pkg_mentenanta`; maintenance activity is recorded in `MENTENANTA`. |
+| Wristband top-ups | `t_incarcare_bratara` checks staff authorization and credits the wristband balance. |
+| Payments and inventory | `p_tranzactie_produs` and `pkg_comenzi` debit wristbands, reduce stock, credit sales points and record purchases. The package adds a cart, electronic receipt, `FOR UPDATE` row locking and `SAVEPOINT` rollback. |
+| VIP access and reporting | `acces_VIP` checks eligibility, occupancy and duplicate entry. Stored subprograms generate schedules, check product availability and retrieve department manager contacts. |
+
+## Repository Structure
 
 ```text
 breeze-database-management-system/
 ├── README.md
 ├── database/
 │   ├── 01_schema.sql
-│   ├── 02_seed_data.sql
-│   ├── 03_triggers.sql
-│   ├── 04_procedures.sql
-│   ├── 05_functions.sql
+│   ├── 02_procedures.sql
+│   ├── 03_functions.sql
+│   ├── 04_seed_data.sql
+│   ├── 05_triggers.sql
 │   └── 06_tests.sql
 ├── docs/
 │   ├── BREEZE_Documentation.pdf
@@ -40,42 +68,29 @@ breeze-database-management-system/
     └── README.md
 ```
 
-| Fișier | Conținut |
+| File | Purpose |
 | --- | --- |
-| [01_schema.sql](database/01_schema.sql) | 28 de tabele, inclusiv `SUSPICIUNE` și `MENTENANTA`, constrângeri PK/FK/CHECK/UNIQUE și 21 de secvențe. |
-| [02_seed_data.sql](database/02_seed_data.sql) | 536 de instrucțiuni INSERT pentru datele inițiale, 15 actualizări inițiale de sold și cinci apeluri de populare a tranzacțiilor. |
-| [03_triggers.sql](database/03_triggers.sql) | Nouă triggere pentru program, bilete, audit, încărcări și control DDL. |
-| [04_procedures.sql](database/04_procedures.sql) | Patru proceduri independente și trei pachete complete: `acces_VIP`, `pkg_mentenanta`, `pkg_comenzi`. |
-| [05_functions.sql](database/05_functions.sql) | Funcția independentă `f_contactare_manager_departament`. |
-| [06_tests.sql](database/06_tests.sql) | Verificări de compilare, interogări și scenarii demonstrative pozitive și negative. |
+| [01_schema.sql](database/01_schema.sql) | Tables, constraints and sequences |
+| [02_procedures.sql](database/02_procedures.sql) | Stored procedures and PL/SQL packages |
+| [03_functions.sql](database/03_functions.sql) | Standalone stored functions |
+| [04_seed_data.sql](database/04_seed_data.sql) | Initial dataset |
+| [05_triggers.sql](database/05_triggers.sql) | Business rules, auditing and DDL controls |
+| [06_tests.sql](database/06_tests.sql) | Positive and negative demonstration scenarios |
 
-Funcțiile membre, precum `pkg_comenzi.total_comanda` și `pkg_comenzi.bon_electronic`, rămân în pachetul din `04_procedures.sql`: separarea lor ar rupe corpul PL/SQL și accesul la starea pachetului. INSERT-urile de test și cele din subprograme rămân alături de scenariul sau logica din care fac parte.
+Package functions remain with their package specifications and bodies in `02_procedures.sql` to preserve their interfaces and shared state.
 
-## Reguli și logică păstrate
+## Installation
 
-| Funcționalitate | Implementare |
-| --- | --- |
-| Prevenirea suprapunerii evenimentelor pe aceeași scenă | `t_program_fara_suprapunere`; `t_program_artist` limitează reprezentațiile unui artist. |
-| Validarea biletelor | `t_bilet_validat_insert`, `t_bilet_validare_update`: validare de către un agent și blocarea revenirii la starea nevalidată. |
-| Audit pentru tentative suspecte | `p_suspiciune` folosește o tranzacție autonomă și păstrează înregistrarea chiar dacă operația este respinsă. |
-| Blocarea transferului biletelor | `t_blocare_update_bilet`, împreună cu protecția datelor de identificare prin `t_blocare_update_participant`. |
-| Control DDL | `t_control` permite CREATE/ALTER/DROP numai când `pkg_mentenanta` activează mentenanța în sesiunea curentă; tabela `MENTENANTA` păstrează evidența. |
-| Actualizarea soldului brățărilor | `t_incarcare_bratara` verifică personalul și adaugă suma încărcată în sold. |
-| Plăți și stocuri | `p_tranzactie_produs` și `pkg_comenzi`: debitarea brățării, actualizarea stocului, creditarea insulei, tranzacție și detalii; pachetul include coș, bon electronic, blocări `FOR UPDATE` și `SAVEPOINT`. |
-| Acces VIP și raportare | `acces_VIP`, `raport_editorial_program`, `p_verificare_disponibilitate_produs` și funcția de contactare a managerului. |
+Follow the [Docker and connection guide](docker/README.md) to connect to an Oracle 19c PDB. Use an **empty project schema** with `CREATE SESSION`, `CREATE TABLE`, `CREATE SEQUENCE`, `CREATE PROCEDURE`, `CREATE TRIGGER` and a tablespace quota.
 
-## Instalare într-o schemă goală
-
-Configurarea mediului și conectarea sunt descrise în [docker/README.md](docker/README.md). Folosește un utilizator de proiect din PDB, cu drepturi pentru tabele, secvențe, proceduri și triggere și cu spațiu în tablespace.
-
-Din rădăcina proiectului, într-o sesiune SQL*Plus conectată la schema goală, rulează **în această ordine**:
+From the repository root, run the scripts in numerical order in SQL*Plus:
 
 ```sql
 @database/01_schema.sql
-@database/04_procedures.sql
-@database/05_functions.sql
-@database/02_seed_data.sql
-@database/03_triggers.sql
+@database/02_procedures.sql
+@database/03_functions.sql
+@database/04_seed_data.sql
+@database/05_triggers.sql
 
 SELECT object_name, object_type, status
 FROM user_objects
@@ -86,42 +101,41 @@ FROM user_errors
 ORDER BY name, sequence;
 ```
 
-Ultimele două interogări trebuie să întoarcă zero rânduri. În SQL Developer, deschide fișierele în aceeași ordine și folosește **Run Script (F5)**.
+Both verification queries should return no rows. In SQL Developer, use **Run Script (F5)** in the same order.
 
-Numerele fișierelor identifică rolurile, nu ordinea de instalare. Procedura de tranzacții trebuie să existe înainte de populare. Seed-ul original conține actualizări manuale ale soldului după încărcări; instalarea triggerului de încărcare înaintea seed-ului ar dubla aceste sume. `t_control` este creat ultimul, după toate celelalte obiecte, pentru a nu bloca instalarea.
+Procedures are installed before the seed data because seeding calls the payment procedure. Triggers are installed afterward because the seed already adjusts initial wristband balances. The DDL control trigger is created last so it does not block installation.
 
-Fișierele de instalare opresc SQL*Plus la o eroare SQL. Erorile de compilare PL/SQL trebuie verificate separat prin `USER_ERRORS`. Instalarea este destinată unei scheme goale și nu este idempotentă: o nouă rulare poate întâlni obiecte existente, chei duplicate sau controlul DDL. DDL și unele proceduri fac COMMIT; o instalare incompletă nu poate fi anulată integral prin ROLLBACK.
+Installation scripts stop on SQL errors; check `USER_ERRORS` separately for PL/SQL compilation failures. Installation is not idempotent. DDL and some procedures commit changes, so a failed installation cannot be fully undone with ROLLBACK.
 
-## Scenarii de test
+## Testing
 
-[06_tests.sql](database/06_tests.sql) păstrează demonstrațiile originale: suprapuneri, validări respinse, acces VIP, raportare, căutări ambigue, audit, încărcări, mentenanță și comenzi cu stoc ori sold insuficient.
-
-Rulează blocurile selectiv într-o **schemă de test** după instalare. Pentru o demonstrație secvențială completă:
+Run [06_tests.sql](database/06_tests.sql) selectively or as a sequential demonstration in a disposable test schema after installation:
 
 ```sql
 @database/06_tests.sql
 ```
 
-Acest fișier continuă după erori deoarece unele sunt intenționate. Nu este o suită automată cu rezultat pass/fail: compară fiecare mesaj și efect cu scenariul comentat și cu documentația. Conține modificări de date, COMMIT și crearea tabelei `TEST`; auditul autonom persistă. Rerularea poate produce rezultate diferite, iar vârsta pentru VIP depinde de `SYSDATE`.
+Scenarios cover scheduling conflicts, rejected ticket operations, VIP access, reporting, audit persistence, top-ups, maintenance and payments with insufficient stock or funds. Expected errors are allowed to continue; inspect messages and database effects against the scenario comments and documentation.
 
-Pentru schimbări ulterioare de structură, activează mentenanța în **aceeași sesiune** în care execuți DDL:
+These are manual demonstrations, not an automated pass/fail suite. They modify data, commit transactions and create a `TEST` table. Autonomous audit records persist, and reruns may produce different results.
 
-```sql
-BEGIN
-    pkg_mentenanta.incepe('Actualizare controlata a schemei');
-END;
-/
--- Executa aici operatiile DDL necesare.
-BEGIN
-    pkg_mentenanta.termina;
-END;
-/
-```
+**Validation status:** The original project was developed and executed on Oracle Database 19c. The reorganized repository has been statically reviewed but has not yet been revalidated against a fresh Oracle instance.
 
-## Proveniență și verificare
+## Known Limitations
 
-SQL-ul a fost separat din `232_Pal_Robert-Attila_sursa.sql`, păstrând definițiile obiectelor și logica originală. Au fost eliminate delimitatoarele `/` redundante după SQL simplu, care ar reexecuta instrucțiunea în SQL*Plus. Explicațiile academice complete se află în PDF; fișierele SQL sunt grupate după responsabilitate.
+- Stage-overlap validation covers INSERT, not event time changes through UPDATE.
+- VIP occupancy and shopping carts use session-specific package state.
+- Maintenance mode is a session-level DDL gate, not a separate authorization system.
+- VIP age checks depend on `SYSDATE`, so demonstration outcomes can change over time.
 
-Au fost verificate static inventarul obiectelor, păstrarea definițiilor, separarea datelor/scenariilor și integritatea copiei PDF; diagramele au fost verificate vizual. **Scripturile reorganizate nu au fost executate pe Oracle în această sesiune**; Docker și SQL*Plus nu au fost disponibile în PATH.
+## Documentation
 
-Reorganizarea păstrează și limitele implementării originale: triggerul de suprapunere verifică INSERT, nu modificările de interval prin UPDATE; evidența VIP și coșul sunt stări de pachet specifice sesiunii; mentenanța nu reprezintă un sistem separat de autorizare. Aceste aspecte necesită o revizie distinctă înaintea utilizării în producție.
+[Full Documentation](docs/BREEZE_Documentation.pdf) is available in Romanian and includes the relational model, integrity rules, PL/SQL implementation and demonstration scenarios. The diagrams above are exported from pages 24 and 25.
+
+## Project Context
+
+Developed as part of the Database Management Systems coursework at the University of Bucharest, 2025–2026.
+
+## Author
+
+Pal Robert-Attila
